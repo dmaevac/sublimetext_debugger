@@ -5,9 +5,9 @@ from eventhook import EventHook
 from chromedebugger import ChromeDebugger
 
 class ChromeClient(WebSocketClient):
-	def init(self):
-		self.onNotification = EventHook()
-		self.debugger = ChromeDebugger(self.send_message, self.onNotification)
+	def init(self, vent):
+		self._on_notification = EventHook()
+		self.debugger = ChromeDebugger(self.send_message, self._on_notification, vent)
 		self.idcounter = 1
 		self.callbacks = dict()
 
@@ -34,6 +34,5 @@ class ChromeClient(WebSocketClient):
 		if j.has_key('id'):
 			self.callbacks.get(j['id'], lambda e,r: None)(j.get('error', None), j.get('result', None))
 		elif j.has_key('method'): 
-			print j['method']
 			parts = j['method'].split('.')
-			self.onNotification.fire(parts[0], parts[1], j.get('params', None))
+			self._on_notification.fire(parts[0], parts[1], j.get('params', None))

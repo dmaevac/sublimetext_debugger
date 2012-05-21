@@ -1,0 +1,19 @@
+[
+    {
+        "keys": ["ctrl+shift+c"],
+        "__doc__": "Attach To Chrome",
+        "command": "attach_to_chrome"
+    }, {
+        "keys": ["ctrl+shift+t"],
+        "__doc__": "Toggle Breakpoint",
+        "command": "toggle_breakpoint"
+    }, {
+        "keys": ["f8"],
+        "__doc__": "Resume",
+        "command": "resume"
+    }, {
+        "keys": ["f10"],
+        "__doc__": "Step Over",
+        "command": "step_over"
+    }
+]
