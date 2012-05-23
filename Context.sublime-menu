@@ -1,0 +1,12 @@
+[
+	{
+		"id": "toggleBreakpoint",
+		"caption": "Toggle Breakpoint",
+		"command": "toggle_breakpoint"
+	},
+	{
+		"id": "removeAllBreakpoints",
+		"caption": "Remove All Breakpoints",
+		"command": "remove_all_breakpoints"
+	}
+]

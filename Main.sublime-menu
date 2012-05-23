@@ -1,0 +1,54 @@
+[
+    {
+        "id": "tools",
+        "children":
+        [
+            {
+                "caption": "Chrome Dev Tools",
+                "id": "chromedevtools",
+                "children":
+                [
+                    {
+                        "caption": "Attach to Chrome",
+                        "command": "attach_to_chrome"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "preferences",
+        "children":
+        [
+            {
+                "caption": "Package Settings",
+                "id": "package-settings",
+                "children":
+                [
+                    {
+                        "caption": "Chrome Dev Tools",
+                        "children":
+                        [
+                            {
+                                "caption": "Settings – Default",
+                                "command": "open_file",
+                                "args":
+                                {
+                                    "file": "${packages}/ChromeDevTools-SublimeTextPlugin/sublime-jslint.sublime-settings"
+                                }
+                            },
+                            {
+                                "caption": "Settings – User",
+                                "command": "open_file",
+                                "args":
+                                {
+                                    "file": "${packages}/User/sublime-jslint.sublime-settings"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+]

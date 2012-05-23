@@ -3,6 +3,10 @@
         "keys": ["ctrl+shift+c"],
         "__doc__": "Attach To Chrome",
         "command": "attach_to_chrome"
+    },{
+        "keys": ["ctrl+shift+alt+c"],
+        "__doc__": "Detach All",
+        "command": "detach_all"
     }, {
         "keys": ["ctrl+shift+t"],
         "__doc__": "Toggle Breakpoint",
@@ -15,5 +19,13 @@
         "keys": ["f10"],
         "__doc__": "Step Over",
         "command": "step_over"
+    }, {
+        "keys": ["f11"],
+        "__doc__": "Step Into",
+        "command": "step_into"
+    }, {
+        "keys": ["shift+f11"],
+        "__doc__": "Step Out",
+        "command": "step_out"
     }
 ]
