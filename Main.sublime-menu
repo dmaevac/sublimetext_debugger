@@ -1,22 +1,5 @@
 [
     {
-        "id": "tools",
-        "children":
-        [
-            {
-                "caption": "Chrome Dev Tools",
-                "id": "chromedevtools",
-                "children":
-                [
-                    {
-                        "caption": "Attach to Chrome",
-                        "command": "attach_to_chrome"
-                    }
-                ]
-            }
-        ]
-    },
-    {
         "id": "preferences",
         "children":
         [
@@ -26,7 +9,7 @@
                 "children":
                 [
                     {
-                        "caption": "Chrome Dev Tools",
+                        "caption": "Debugger",
                         "children":
                         [
                             {
@@ -50,5 +33,30 @@
                 ]
             }
         ]
+    },
+    {
+
+        "caption": "Debugger",
+        "id": "debugger",
+        "children":
+        [
+            {
+                "caption": "Attach to Chrome",
+                "command": "attach_to_chrome"
+            },
+            {
+                "caption": "Detach All",
+                "command": "detach_all"
+            },
+            {
+                "caption": "Remove All Breakpoints",
+                "command": "remove_all_breakpoints"
+            },
+            {
+                "caption": "List Breakpoints",
+                "command": "show_breakpoint_list"
+            }
+        ]
+
     }
 ]

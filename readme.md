@@ -1,7 +1,7 @@
-Chrome Developer Tools Sublime Text Plugin
+Debugger/Live Script Editor for Sublime Text 2
 =====
 
-*Live edit and debug javascript from Sublime Text 2*
+*Live edit and debug javascript (possibly more) from Sublime Text 2*
 
 *STILL IN DEVELOPMENT*
 
@@ -30,5 +30,7 @@ Usage
 - ctrl + shift + t to toggle a breakpoint at the current line
 - f8 to resume from a pause
 - f10 to 'step over'
+- f11 to 'step into'
+- shift+f11 to 'step out'
 
-- When save is triggered the script is replaced live inside the browser (no need to refresh!)
+- When save is triggered the script is replaced live inside the browser

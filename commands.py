@@ -1,12 +1,20 @@
 import sublime
 import sublime_plugin
 import json
+import pprint
+from urlparse import urlparse
 import urllib2
-from devtools import Session
+import devtools
+import debugger.throttle
+
+reload(devtools)
+reload(debugger.throttle)
 
 SESSIONS = []
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
 HOSTURL = '{0}:{1}'
+SCOPE_VARS_NAME = 'Scope Variables'
+CALL_STACK_NAME = 'Call Stack'
 
 devToolsAttachedToTab = 'Developer tools are already connected to this tab. Please close and try again.'
 chromeNotRunningMessage = 'Error connecting to Chrome. Ensure Chrome is running and that it has been started with the argument " --remote-debugging-port={0}"'
@@ -69,16 +77,55 @@ class RemoveAllBreakpointsCommand(sublime_plugin.TextCommand):
         return len(SESSIONS) > 0
 
 
+class ShowBreakpointListCommand(sublime_plugin.WindowCommand):
+    def run(self):
+        s = SESSIONS[0]
+        self.bp_list = []
+        for x in s.breakpoint_list():
+            bp = [x["file"]]
+            bp.append(str(x["lineNumber"] + 1))
+            self.bp_list.append(bp)
+        self.window.show_quick_panel(self.bp_list, self.onTargetPick)
+
+    def onTargetPick(self, val):
+        print val
+
+    def is_enabled(self):
+        return len(SESSIONS) > 0
+
+
+class RenderScopeVarsCommand(sublime_plugin.WindowCommand):
+    def run(self):
+        self.window.set_layout({
+            "cols": [0.0, 0.75, 1.0],
+            "rows": [0.0, 0.5, 1.0],
+            "cells": [[0, 0, 1, 2], [1, 0, 2, 1], [1, 1, 2, 2]]
+            })
+        self.window.focus_group(1)
+        scopeVarsView = self.window.new_file()
+        scopeVarsView.set_scratch(True)
+        scopeVarsView.set_read_only(True)
+        scopeVarsView.set_name(SCOPE_VARS_NAME)
+        self.window.focus_group(2)
+        callStackView = self.window.new_file()
+        callStackView.set_scratch(True)
+        callStackView.set_read_only(True)
+        callStackView.set_name(CALL_STACK_NAME)
+        self.window.focus_group(0)
+
+
 class DetachAllCommand(sublime_plugin.WindowCommand):
     def run(self):
         while len(SESSIONS):
             SESSIONS.pop().kill()
 
+    def is_enabled(self):
+        return len(SESSIONS) > 0
+
 
 class AttachToChromeCommand(sublime_plugin.WindowCommand):
     def run(self):
-        while len(SESSIONS):
-            SESSIONS.pop().kill()
+        self.window.run_command('detach_all')
 
         self.targets = dict()
         self.folders = self.window.folders()
@@ -99,6 +146,8 @@ class AttachToChromeCommand(sublime_plugin.WindowCommand):
         if idx >= 0:
             if "webSocketDebuggerUrl" in self.targets[idx]:
                 self.targetUrl = self.targets[idx]["webSocketDebuggerUrl"]
+                u = urlparse(self.targets[idx].get('url'))
+                self.websiteHost = u.scheme + "://" + u.netloc
                 opts = [x for x in self.folders if not x is None]
                 self.window.show_quick_panel(opts, self.onFolderPick)
             else:
@@ -107,20 +156,29 @@ class AttachToChromeCommand(sublime_plugin.WindowCommand):
     def onFolderPick(self, idx):
         folder = self.folders[idx]
         if idx >= 0 and not folder is None:
-            SESSIONS.append(Session(self.window, folder, self.targetUrl))
+            SESSIONS.append(devtools.Session(self.window, folder, self.targetUrl, self.websiteHost))
+
+    def is_enabled(self):
+        return len(SESSIONS) == 0
 
 
 class EventHandler(sublime_plugin.EventListener):
     def on_activated(self, view):
-        if len(SESSIONS):
+        if len(SESSIONS) and not view.is_scratch():
             filename = view.file_name()
             if filename:
                 s = SESSIONS[0]
                 sid = s.get_file_scriptId(filename)
                 if sid > -1:
                     print 'Matched view to script ' + str(sid)
+                    # cf = self.client.debugger.get_callFrames(scriptId)[0]
+                    # oid = cf.get('this').get('objectId')
+                    # self.client.runtime.get_properties(oid)
+                    # self.render_scope_variables()
                     s.render_breakpoints(view)
                     s.render_pausemarks(view)
+        else:
+            view.erase_regions('breakpoints')
 
     def on_post_save(self, view):
         if len(SESSIONS):
@@ -128,4 +186,22 @@ class EventHandler(sublime_plugin.EventListener):
             SESSIONS[0].saved_file(view.file_name(), content)
 
     def on_load(self, view):
-        self.on_activated(view)
+        if not view.is_scratch():
+            self.on_activated(view)
+
+    def on_close(self, view):
+        if view.name() == SCOPE_VARS_NAME:
+            pass
+            # close the watch group
+
+    def on_selection_modified(self, view):
+        # if len(SESSIONS) and not view.is_scratch():
+        #     s = SESSIONS[0]
+        #     filename = view.file_name()
+        #     if filename and s.paused:
+        #         sid = s.get_file_scriptId(filename)
+        #         if sid > -1:
+        #             s.fetch_scope_variables(view.substr(view.sel()[0]))
+        #print view.substr(view.sel()[0])
+        # sublime.set_timeout(debounced(view), 1)
+        pass

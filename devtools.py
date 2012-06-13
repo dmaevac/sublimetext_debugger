@@ -7,6 +7,7 @@ import chrome.chromeclient
 reload(debugger.eventhook)
 reload(chrome.chromeclient)
 
+SCOPE_VARS_NAME = 'Scope Variables'
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
 couldNotMatchFileToChrome = 'Current file could not be found running in Chrome.'
 
@@ -17,17 +18,17 @@ def fix_filename(filename):
 
 
 class Session():
-    def __init__(self, window, folder, wsUrl):
+    def __init__(self, window, folder, wsUrl, websiteHost):
         s = sublime.load_settings(SETTINGS_FILE)
         host = s.get('host', 'http://localhost')
 
         self.folder = fix_filename(folder)
         self._subwindow = window
-        self._host = host
+        self._host = websiteHost
         self.vent = debugger.eventhook.EventHook()
         self.paused = False
         self.client = chrome.chromeclient.ChromeClient(wsUrl)
-        self.client.initialize(self._host, self.vent)
+        self.client.initialize(host, self.vent)
         self.client.daemon = False
         self.client.connect()
         self.vent += self.on_vent
@@ -47,20 +48,22 @@ class Session():
     def on_vent(self, name, data):
         l = None
         if name == 'breakpoints_changed':
-            l = lambda: self.render_breakpoints(self._subwindow.active_view())
+            l = self.render_breakpoints
         elif name == 'paused' and data:
             self.paused = True
-            l = lambda: self.focus_on_pausepoint(self._subwindow.active_view())
+            l = self.focus_on_pausepoint
         elif name == 'resumed':
             self.paused = False
-            l = lambda: self.render_pausemarks(self._subwindow.active_view())
+            l = self.render_pausemarks
         elif name == 'object_properties':
-            pprint.pprint(data)
+            l = self.render_scope_variables
         if l:
-            sublime.set_timeout(l, 1)
-        print datetime.datetime.now(), 'vented', name
+            sublime.set_timeout(lambda: l(self._subwindow.active_view()), 1)
+
+        print datetime.datetime.now(), '[vented]', name
+
         if name == 'error':
-            print data
+            print name, data
 
     def locations_to_regions(self, view, scriptId, locations):
         regions = []
@@ -78,25 +81,48 @@ class Session():
             loc = pauselocations[0]
             scriptId = loc["scriptId"]
             filename = self.client.debugger.get_scriptFile(scriptId)
-            filepath = fix_filename(self.folder + filename).replace(self._host, '')
+            filepath = self.folder + fix_filename(filename).replace(self._host, '')
             if fix_filename(currentView.file_name()) != filepath:
                 print 'Opening ' + filepath
                 self._subwindow.open_file(filepath)
             else:
                 self.render_pausemarks(currentView)
 
+    def fetch_scope_variables(self, query):
+        print 'Querying for '. query
+
+    def render_scope_variables(self, activeView):
+        variables = self.client.runtime.get_current_scope_variables()
+        self._subwindow.set_layout({
+            "cols": [0.0, 0.75, 1.0],
+            "rows": [0.0, 1.0],
+            "cells": [[0, 0, 1, 1], [1, 0, 2, 1]]
+            })
+        self._subwindow.focus_group(1)
+        scopeVarsView = self._subwindow.new_file()
+        scopeVarsView.set_scratch(True)
+        scopeVarsView.set_read_only(True)
+        scopeVarsView.set_name(SCOPE_VARS_NAME)
+        self._subwindow.focus_group(0)
+
+        cf = self.client.debugger.get_callFrames(scriptId)[0]
+        oid = cf.get('this').get('objectId')
+        self.client.runtime.get_properties(oid)
+        self.render_scope_variables()
+
     def render_pausemarks(self, view):
         scriptId = self.get_file_scriptId(view.file_name())
         pauselocations = self.client.debugger.get_script_pauselocations()
         if pauselocations:
-            cf = self.client.debugger.get_callFrames(scriptId)[0]
-            oid = cf.get('this').get('objectId')
-            self.client.runtime.get_properties(oid)
             regions = self.locations_to_regions(view, scriptId, pauselocations)
-            view.add_regions('pausemarks', regions, 'comment', 'circle')
+            view.add_regions('pausemarks', regions, 'storage', 'circle')
             view.show(regions[0])
         else:
             view.erase_regions('pausemarks')
+
+    def breakpoint_list(self):
+        bps = [{'lineNumber': x["lineNumber"], 'file': self.client.debugger.get_scriptFile(x["scriptId"])} for x in self.client.debugger.get_all_breakpoint_locations()]
+        return bps
 
     def render_breakpoints(self, view):
         scriptId = self.get_file_scriptId(view.file_name())

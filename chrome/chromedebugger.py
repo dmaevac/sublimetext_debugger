@@ -1,3 +1,6 @@
+import pprint
+
+
 def handle_error_response(error, result):
     if error:
         print error
@@ -8,23 +11,25 @@ class ChromeRuntime:
 
     def __init__(self, host, sendMessage, onNotification, vent):
         self.sendMessage = sendMessage
-        self.scripts = []
         self._vent = vent
         self._host = host
-        n = lambda d, m, p: self.notification(m, p) if d == self.domain else None
+        self._currentScopeVariables = []
+        n = lambda d, m, p: self.notification(m, p) if d != "Debugger" else None
         onNotification += n
 
     def notification(self, method, params):
-        if method == 'scriptParsed':
-            if params['url'].find(self._host) >= 0:
-                self.scripts.append(params)
+        self._vent.fire(method, params)
 
     def send_command(self, method, params=None, callback=None):
         self.sendMessage(self.domain + '.' + method, params, callback)
 
+    def get_current_scope_variables(self):
+        return self._currentScopeVariables
+
     def get_properties(self, objectId):
         def handle_response(error, result):
             if not error:
+                self._currentScopeVariables = result
                 self._vent.fire('object_properties', result)
             else:
                 self._vent.fire('error', error)
@@ -40,26 +45,25 @@ class ChromeDebugger:
 
     def __init__(self, host, sendMessage, onNotification, vent):
         self.sendMessage = sendMessage
-        self.scripts = []
+        self._scripts = dict()
         self._vent = vent
         self._host = host
-        self.breakpoints = dict()
-        self.currentCallFrames = []
-        n = lambda d, m, p: self.notification(m, p) if d == self.domain else None
-        onNotification += n
+        self._breakpoints = dict()
+        self._currentCallFrames = []
+        onNotification += lambda d, m, p: self.notification(m, p) if d == self.domain else None
 
     def notification(self, method, params):
         if method == 'scriptParsed':
-            if params['url'].find(self._host) >= 0:
-                self.scripts.append(params)
+            params['local'] = params['url'].find(self._host) >= 0
+            self._scripts[params['url']] = params
         elif method == 'paused':
-            self.currentCallFrames = params['callFrames']
-            self._vent.fire(method, params)
+            self._currentCallFrames = params['callFrames']
         elif method == 'resumed':
-            self.currentCallFrames = []
-            self._vent.fire(method, params)
-        elif method == 'breakpointResolved':
-            self._vent.fire(method, params)
+            self._currentCallFrames = []
+        elif method == 'globalObjectCleared':
+            self._scripts = dict()
+            self._currentCallFrames = []
+        self._vent.fire(method, params)
 
     def send_command(self, method, params=None, callback=None):
         self.sendMessage(self.domain + '.' + method, params, callback)
@@ -86,24 +90,25 @@ class ChromeDebugger:
         self.send_command('canSetScriptSource', None, handle_error_response)
 
     def get_scriptId(self, url):
-        r = -1
-        for d in self.scripts:
-            if d['url'].find(url) > 0 and d['url'].find(self._host) >= 0:
-                r = d['scriptId']
-        return r
+        r = []
+        for k, v in self._scripts.iteritems():
+            if v['url'].find(url) > 0 and v['url'].find(self._host) >= 0:
+                r.append(v['scriptId'])
+        if len(r) > 1:
+            print 'To Many Results', r
+        return r[0] if len(r) >= 1 else -1
 
     def get_scriptFile(self, scriptId):
-        r = None
-        for d in self.scripts:
-            if d['scriptId'] == scriptId:
-                return d["url"]
-        return r
+        r = [v["url"] for k, v in self._scripts.iteritems() if v["scriptId"] == scriptId]
+        if len(r) > 1:
+            print 'To Many Results', r
+        return r[0] if len(r) >= 1 else -1
 
     def set_script_source(self, scriptId, newSource):
         def handle_response(error, result):
             if not error:
-                ct = result.get('result').get('change_tree')
-                print ct
+                ct = result.get('result')
+                pass
             else:
                 self._vent.fire('error', error)
 
@@ -115,8 +120,8 @@ class ChromeDebugger:
     def set_breakpoint(self, scriptId, line, col=0, condition=""):
         def handle_response(error, result):
             if not error:
-                self.breakpoints[result['breakpointId']] = result['actualLocation']
-                self._vent.fire('breakpoints_changed', self.breakpoints)
+                self._breakpoints[result['breakpointId']] = result['actualLocation']
+                self._vent.fire('breakpoints_changed', self._breakpoints)
             else:
                 self._vent.fire('error', error)
 
@@ -132,8 +137,8 @@ class ChromeDebugger:
     def remove_breakpoint(self, breakpointId):
         def handle_response(error, result):
             if not error:
-                del self.breakpoints[breakpointId]
-                self._vent.fire('breakpoints_changed', self.breakpoints)
+                del self._breakpoints[breakpointId]
+                self._vent.fire('breakpoints_changed', self._breakpoints)
             else:
                 self._vent.fire('error', error)
 
@@ -141,16 +146,16 @@ class ChromeDebugger:
             "breakpointId": breakpointId,
         }, handle_response)
 
+    def get_all_breakpoint_locations(self):
+        return self._breakpoints.values()
+
     def get_script_breakpoints(self, scriptId):
-        r = []
-        for v in self.breakpoints.itervalues():
-            if v['scriptId'] == scriptId:
-                r.append(v)
+        r = [x for x in self._breakpoints.itervalues() if x['scriptId'] == scriptId]
         return r
 
     def get_script_pauselocations(self, scriptId=None):
         r = []
-        pauselocations = [x["location"] for x in self.currentCallFrames]
+        pauselocations = [x["location"] for x in self._currentCallFrames]
         if scriptId:
             r = [x for x in pauselocations if x['scriptId'] == scriptId]
         else:
@@ -159,14 +164,14 @@ class ChromeDebugger:
 
     def get_script_breakpoint_ids(self, scriptId, line=None, col=None):
         bps = []
-        for k, v in self.breakpoints.iteritems():
+        for k, v in self._breakpoints.iteritems():
             if v['scriptId'] == str(scriptId) and (line is None or v['lineNumber'] == (line)):
                 bps.append(k)
         return bps
 
     def get_callFrames(self, scriptId):
         cf = []
-        for v in self.currentCallFrames:
+        for v in self._currentCallFrames:
             if v['location'].get('scriptId', None) == scriptId:
                 cf.append(v)
         return cf
