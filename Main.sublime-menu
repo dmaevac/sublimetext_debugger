@@ -55,6 +55,14 @@
             {
                 "caption": "List Breakpoints",
                 "command": "show_breakpoint_list"
+            },
+            {
+                "caption": "Call Stack",
+                "command": "show_callstack"
+            },
+            {
+                "caption": "Step Over",
+                "command": "step_over"
             }
         ]
 

@@ -1,11 +1,12 @@
 import sublime
 import datetime
+import utils
+import chromeconnector.client
+import pystache
 import pprint
-import debugger.eventhook
-import chrome.chromeclient
 
-reload(debugger.eventhook)
-reload(chrome.chromeclient)
+reload(utils)
+reload(chromeconnector.client)
 
 SCOPE_VARS_NAME = 'Scope Variables'
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
@@ -17,6 +18,24 @@ def fix_filename(filename):
     return filename.replace('\\', '/')
 
 
+def extended_view(view):
+    def clear():
+        edit = view.begin_edit()
+        view.erase(edit, sublime.Region(0, view.size()))
+        view.end_edit(edit)
+
+    def replaceAll(text, point=0):
+        edit = view.begin_edit()
+        view.erase(edit, sublime.Region(0, view.size()))
+        view.insert(edit, point, text)
+        view.end_edit(edit)
+
+    view.clear = clear
+    view.replaceAll = replaceAll
+
+    return view
+
+
 class Session():
     def __init__(self, window, folder, wsUrl, websiteHost):
         s = sublime.load_settings(SETTINGS_FILE)
@@ -25,9 +44,10 @@ class Session():
         self.folder = fix_filename(folder)
         self._subwindow = window
         self._host = websiteHost
-        self.vent = debugger.eventhook.EventHook()
-        self.paused = False
-        self.client = chrome.chromeclient.ChromeClient(wsUrl)
+        self._scopeView = None
+        self.vent = utils.EventHook()
+        # self.paused = False
+        self.client = chromeconnector.client.ChromeClient(wsUrl)
         self.client.initialize(host, self.vent)
         self.client.daemon = False
         self.client.connect()
@@ -58,7 +78,7 @@ class Session():
         elif name == 'object_properties':
             l = self.render_scope_variables
         if l:
-            sublime.set_timeout(lambda: l(self._subwindow.active_view()), 1)
+            sublime.set_timeout(lambda: l(self._subwindow.active_view(), data), 1)
 
         print datetime.datetime.now(), '[vented]', name
 
@@ -75,7 +95,7 @@ class Session():
             regions.append(reg)
         return regions
 
-    def focus_on_pausepoint(self, currentView):
+    def focus_on_pausepoint(self, currentView, data=None):
         pauselocations = self.client.debugger.get_script_pauselocations()
         if pauselocations:
             loc = pauselocations[0]
@@ -87,30 +107,37 @@ class Session():
                 self._subwindow.open_file(filepath)
             else:
                 self.render_pausemarks(currentView)
+                self.fetch_scope_variables(scriptId)
 
-    def fetch_scope_variables(self, query):
-        print 'Querying for '. query
+    def fetch_scope_variables(self, scriptId, query=None):
+        # variables = self.client.runtime.get_current_scope_variables()
+        cf = self.client.debugger.get_callFrames(scriptId)[0]
+        oid = cf.get('scopeChain')[0]["object"].get('objectId')
+        self.client.runtime.get_properties(oid)
+        print 'Querying for ', scriptId, query
 
-    def render_scope_variables(self, activeView):
-        variables = self.client.runtime.get_current_scope_variables()
+    def render_scope_variables(self, activeView, data=None):
         self._subwindow.set_layout({
             "cols": [0.0, 0.75, 1.0],
             "rows": [0.0, 1.0],
             "cells": [[0, 0, 1, 1], [1, 0, 2, 1]]
             })
         self._subwindow.focus_group(1)
-        scopeVarsView = self._subwindow.new_file()
-        scopeVarsView.set_scratch(True)
-        scopeVarsView.set_read_only(True)
-        scopeVarsView.set_name(SCOPE_VARS_NAME)
+        if self._scopeView is None:
+            self._scopeView = extended_view(self._subwindow.new_file())
+            self._scopeView.set_name(SCOPE_VARS_NAME)
+            self._scopeView.set_scratch(True)
+        else:
+            self._subwindow.set_view_index(self._scopeView, 1, 0)
         self._subwindow.focus_group(0)
 
-        cf = self.client.debugger.get_callFrames(scriptId)[0]
-        oid = cf.get('this').get('objectId')
-        self.client.runtime.get_properties(oid)
-        self.render_scope_variables()
+        pprint.pprint(data)
+        tpl = '{{#result}}{{name}}:\t\t{{#value}}{{description}}{{/value}}\r\n{{/result}}'
+        self._scopeView.set_read_only(False)
+        self._scopeView.replaceAll(pystache.render(tpl, data))
+        self._scopeView.set_read_only(True)
 
-    def render_pausemarks(self, view):
+    def render_pausemarks(self, view, data=None):
         scriptId = self.get_file_scriptId(view.file_name())
         pauselocations = self.client.debugger.get_script_pauselocations()
         if pauselocations:
@@ -121,10 +148,9 @@ class Session():
             view.erase_regions('pausemarks')
 
     def breakpoint_list(self):
-        bps = [{'lineNumber': x["lineNumber"], 'file': self.client.debugger.get_scriptFile(x["scriptId"])} for x in self.client.debugger.get_all_breakpoint_locations()]
-        return bps
+        return self.client.debugger.get_breakpoint_locations()
 
-    def render_breakpoints(self, view):
+    def render_breakpoints(self, view, data=None):
         scriptId = self.get_file_scriptId(view.file_name())
         breakpoints = self.client.debugger.get_script_breakpoints(scriptId)
         regions = self.locations_to_regions(view, scriptId, breakpoints)
@@ -135,6 +161,9 @@ class Session():
             f = fix_filename(filename).replace(self.folder, '')
             return self.client.debugger.get_scriptId(f)
         return -1
+
+    def call_stack_locations(self):
+        return self.client.debugger.get_call_stack_locations()
 
     def resume(self):
         self.client.debugger.resume()

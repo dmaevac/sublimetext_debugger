@@ -1,46 +1,9 @@
-import pprint
-
-
 def handle_error_response(error, result):
     if error:
         print error
 
 
-class ChromeRuntime:
-    domain = 'Runtime'
-
-    def __init__(self, host, sendMessage, onNotification, vent):
-        self.sendMessage = sendMessage
-        self._vent = vent
-        self._host = host
-        self._currentScopeVariables = []
-        n = lambda d, m, p: self.notification(m, p) if d != "Debugger" else None
-        onNotification += n
-
-    def notification(self, method, params):
-        self._vent.fire(method, params)
-
-    def send_command(self, method, params=None, callback=None):
-        self.sendMessage(self.domain + '.' + method, params, callback)
-
-    def get_current_scope_variables(self):
-        return self._currentScopeVariables
-
-    def get_properties(self, objectId):
-        def handle_response(error, result):
-            if not error:
-                self._currentScopeVariables = result
-                self._vent.fire('object_properties', result)
-            else:
-                self._vent.fire('error', error)
-
-        self.send_command('getProperties', {
-            "objectId": objectId,
-            "ownProperties": True,
-        }, handle_response)
-
-
-class ChromeDebugger:
+class Debugger:
     domain = 'Debugger'
 
     def __init__(self, host, sendMessage, onNotification, vent):
@@ -146,8 +109,15 @@ class ChromeDebugger:
             "breakpointId": breakpointId,
         }, handle_response)
 
-    def get_all_breakpoint_locations(self):
-        return self._breakpoints.values()
+    def get_breakpoint_locations(self):
+        r = []
+        for k, x in self._breakpoints.iteritems():
+            r.append({
+                "id": k,
+                "lineNumber": x["lineNumber"],
+                "fileName": self.get_scriptFile(x["scriptId"]),
+            })
+        return r
 
     def get_script_breakpoints(self, scriptId):
         r = [x for x in self._breakpoints.itervalues() if x['scriptId'] == scriptId]
@@ -175,3 +145,14 @@ class ChromeDebugger:
             if v['location'].get('scriptId', None) == scriptId:
                 cf.append(v)
         return cf
+
+    def get_call_stack_locations(self):
+        r = []
+        for x in self._currentCallFrames:
+            r.append({
+                "id": x["callFrameId"],
+                "functionName": x["functionName"],
+                "fileName": self.get_scriptFile(x["location"]["scriptId"]),
+                "lineNumber": x["location"]["lineNumber"]
+            })
+        return r

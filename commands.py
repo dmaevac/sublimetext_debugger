@@ -4,11 +4,11 @@ import json
 import pprint
 from urlparse import urlparse
 import urllib2
-import devtools
-import debugger.throttle
+import session
+import utils
 
-reload(devtools)
-reload(debugger.throttle)
+reload(session)
+reload(utils)
 
 SESSIONS = []
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
@@ -82,36 +82,33 @@ class ShowBreakpointListCommand(sublime_plugin.WindowCommand):
         s = SESSIONS[0]
         self.bp_list = []
         for x in s.breakpoint_list():
-            bp = [x["file"]]
+            bp = [x["fileName"]]
             bp.append(str(x["lineNumber"] + 1))
             self.bp_list.append(bp)
         self.window.show_quick_panel(self.bp_list, self.onTargetPick)
 
-    def onTargetPick(self, val):
-        print val
+    def onTargetPick(self, idx):
+        print self.bp_list[idx]
 
     def is_enabled(self):
         return len(SESSIONS) > 0
 
 
-class RenderScopeVarsCommand(sublime_plugin.WindowCommand):
+class ShowCallStackCommand(sublime_plugin.WindowCommand):
     def run(self):
-        self.window.set_layout({
-            "cols": [0.0, 0.75, 1.0],
-            "rows": [0.0, 0.5, 1.0],
-            "cells": [[0, 0, 1, 2], [1, 0, 2, 1], [1, 1, 2, 2]]
-            })
-        self.window.focus_group(1)
-        scopeVarsView = self.window.new_file()
-        scopeVarsView.set_scratch(True)
-        scopeVarsView.set_read_only(True)
-        scopeVarsView.set_name(SCOPE_VARS_NAME)
-        self.window.focus_group(2)
-        callStackView = self.window.new_file()
-        callStackView.set_scratch(True)
-        callStackView.set_read_only(True)
-        callStackView.set_name(CALL_STACK_NAME)
-        self.window.focus_group(0)
+        s = SESSIONS[0]
+        self.bp_list = []
+        for x in s.call_stack_locations():
+            bp = [x["functionName"]]
+            bp.append(x["fileName"] + ':' + (str(x["lineNumber"] + 1)))
+            self.bp_list.append(bp)
+        self.window.show_quick_panel(self.bp_list, self.onTargetPick)
+
+    def onTargetPick(self, idx):
+        print self.bp_list[idx]
+
+    def is_enabled(self):
+        return len(SESSIONS) > 0 and SESSIONS[0].paused
 
 
 class DetachAllCommand(sublime_plugin.WindowCommand):
@@ -156,7 +153,7 @@ class AttachToChromeCommand(sublime_plugin.WindowCommand):
     def onFolderPick(self, idx):
         folder = self.folders[idx]
         if idx >= 0 and not folder is None:
-            SESSIONS.append(devtools.Session(self.window, folder, self.targetUrl, self.websiteHost))
+            SESSIONS.append(session.Session(self.window, folder, self.targetUrl, self.websiteHost))
 
     def is_enabled(self):
         return len(SESSIONS) == 0
@@ -205,3 +202,9 @@ class EventHandler(sublime_plugin.EventListener):
         #print view.substr(view.sel()[0])
         # sublime.set_timeout(debounced(view), 1)
         pass
+
+
+class TestCommand(sublime_plugin.WindowCommand):
+    def run(self):
+        self.window.show_quick_panel([['SCOUT.App.Content.Ext.extend.loadModule', 'Spafax.SCOUT.App.Content.js:110'],
+            ['SCOUT.App.Main.Ext.extend.loadModule', 'Spafax.SCOUT.App.Main.js:174']], lambda a: a)
