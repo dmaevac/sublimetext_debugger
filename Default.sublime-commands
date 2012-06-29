@@ -1,0 +1,14 @@
+[
+    {
+        "caption": "Debugger: Remove All Breakpoints",
+        "command": "remove_all_breakpoints"
+    },
+    {
+        "caption": "Debugger: List Breakpoints",
+        "command": "show_breakpoint_list"
+    },
+    {
+        "caption": "Debugger: List Call Stack",
+        "command": "show_call_stack"
+    }
+]
