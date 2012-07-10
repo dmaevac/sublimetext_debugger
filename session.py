@@ -1,16 +1,14 @@
 import sublime
 import datetime
 import utils
-import chromeconnector.client
 import pystache
 import pprint
 
 reload(utils)
-reload(chromeconnector.client)
 
 SCOPE_VARS_NAME = 'Scope Variables'
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
-couldNotMatchFileToChrome = 'Current file could not be found running in Chrome.'
+couldNotMatchFile = 'Current file could not be found running.'
 
 
 def fix_filename(filename):
@@ -37,7 +35,7 @@ def extended_view(view):
 
 
 class Session():
-    def __init__(self, window, folder, wsUrl, websiteHost):
+    def __init__(self, window, folder, client, websiteHost):
         s = sublime.load_settings(SETTINGS_FILE)
         host = s.get('host', 'http://localhost')
 
@@ -46,8 +44,8 @@ class Session():
         self._host = websiteHost
         self._scopeView = None
         self.vent = utils.EventHook()
-        # self.paused = False
-        self.client = chromeconnector.client.ChromeClient(wsUrl)
+        # self._paused = False
+        self.client = client
         self.client.initialize(host, self.vent)
         self.client.daemon = False
         self.client.connect()
@@ -95,13 +93,26 @@ class Session():
             regions.append(reg)
         return regions
 
+    def unpack_location(self, location):
+        filename = None
+        if "fileName" in location:
+            filename = location["fileName"]
+        if not filename and "scriptId" in location:
+            scriptId = location["scriptId"]
+            filename = self.client.debugger.get_scriptFile(scriptId)
+        filepath = self.folder + fix_filename(filename).replace(self._host, '')
+        return filename, filepath, location["lineNumber"]
+
+    def focus_on_location(self, loc):
+        filename, filepath, row = self.unpack_location(loc)
+        self._subwindow.open_file("%s:%s" % (filepath, row + 1), sublime.ENCODED_POSITION)
+
     def focus_on_pausepoint(self, currentView, data=None):
         pauselocations = self.client.debugger.get_script_pauselocations()
         if pauselocations:
             loc = pauselocations[0]
             scriptId = loc["scriptId"]
-            filename = self.client.debugger.get_scriptFile(scriptId)
-            filepath = self.folder + fix_filename(filename).replace(self._host, '')
+            filename, filepath, row = self.unpack_location(loc)
             if fix_filename(currentView.file_name()) != filepath:
                 print 'Opening ' + filepath
                 self._subwindow.open_file(filepath)
@@ -122,17 +133,32 @@ class Session():
             "rows": [0.0, 1.0],
             "cells": [[0, 0, 1, 1], [1, 0, 2, 1]]
             })
+
         self._subwindow.focus_group(1)
+
         if self._scopeView is None:
             self._scopeView = extended_view(self._subwindow.new_file())
             self._scopeView.set_name(SCOPE_VARS_NAME)
             self._scopeView.set_scratch(True)
+            # seperate this config into a settings file loaded in at startup
+            self._scopeView.settings().set("word_wrap", False)
+            self._scopeView.settings().set("line_numbers", False)
+            self._scopeView.settings().set("gutter", False)
+            self._scopeView.settings().set("show_tab_close_buttons", False)
         else:
             self._subwindow.set_view_index(self._scopeView, 1, 0)
+
         self._subwindow.focus_group(0)
 
         pprint.pprint(data)
-        tpl = '{{#result}}{{name}}:\t\t{{#value}}{{description}}{{/value}}\r\n{{/result}}'
+        display_len = 14
+        for x in data["result"]:
+            l = len(x["name"])
+            if l > display_len:
+                x["name"] = x["name"][:(display_len - 2)] + '..'
+                l = display_len
+            x["offset"] = " " * (display_len - l)
+        tpl = '{{#result}}{{name}}:{{offset}}{{#value}}{{description}}{{/value}}\r\n{{/result}}'
         self._scopeView.set_read_only(False)
         self._scopeView.replaceAll(pystache.render(tpl, data))
         self._scopeView.set_read_only(True)
@@ -189,7 +215,7 @@ class Session():
                 for bp in breakpointIds:
                     self.client.debugger.remove_breakpoint(bp)
         else:
-            sublime.error_message(couldNotMatchFileToChrome)
+            sublime.error_message(couldNotMatchFile)
 
     def remove_breakpoints(self, filename):
         scriptId = self.get_file_scriptId(filename)

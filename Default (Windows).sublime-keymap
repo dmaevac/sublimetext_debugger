@@ -27,5 +27,9 @@
         "keys": ["shift+f11"],
         "__doc__": "Step Out",
         "command": "step_out"
+    }, {
+        "keys": ["ctrl+shift+alt+t"],
+        "__doc__": "List Breakpoints",
+        "command": "show_breakpoint_list"
     }
 ]

@@ -6,9 +6,11 @@ from urlparse import urlparse
 import urllib2
 import session
 import utils
+import chromeconnector.client
 
 reload(session)
 reload(utils)
+reload(chromeconnector.client)
 
 SESSIONS = []
 SETTINGS_FILE = "sublime-jslint.sublime-settings"
@@ -79,16 +81,18 @@ class RemoveAllBreakpointsCommand(sublime_plugin.TextCommand):
 
 class ShowBreakpointListCommand(sublime_plugin.WindowCommand):
     def run(self):
-        s = SESSIONS[0]
+        self.session = SESSIONS[0]
         self.bp_list = []
-        for x in s.breakpoint_list():
+        self.items = self.session.breakpoint_list()
+        for x in self.items:
             bp = [x["fileName"]]
-            bp.append(str(x["lineNumber"] + 1))
+            bp.append("line:%s" % str(x["lineNumber"] + 1))
             self.bp_list.append(bp)
         self.window.show_quick_panel(self.bp_list, self.onTargetPick)
 
     def onTargetPick(self, idx):
-        print self.bp_list[idx]
+        if idx:
+            self.session.focus_on_location(self.items[idx])
 
     def is_enabled(self):
         return len(SESSIONS) > 0
@@ -96,16 +100,18 @@ class ShowBreakpointListCommand(sublime_plugin.WindowCommand):
 
 class ShowCallStackCommand(sublime_plugin.WindowCommand):
     def run(self):
-        s = SESSIONS[0]
+        self.session = SESSIONS[0]
+        self.items = self.session.call_stack_locations()
         self.bp_list = []
-        for x in s.call_stack_locations():
+        for x in self.items:
             bp = [x["functionName"]]
-            bp.append(x["fileName"] + ':' + (str(x["lineNumber"] + 1)))
+            bp.append("%s:%s" % (x["fileName"], str(x["lineNumber"] + 1)))
             self.bp_list.append(bp)
         self.window.show_quick_panel(self.bp_list, self.onTargetPick)
 
     def onTargetPick(self, idx):
-        print self.bp_list[idx]
+        if idx:
+            self.session.focus_on_location(self.items[idx])
 
     def is_enabled(self):
         return len(SESSIONS) > 0 and SESSIONS[0].paused
@@ -153,7 +159,8 @@ class AttachToChromeCommand(sublime_plugin.WindowCommand):
     def onFolderPick(self, idx):
         folder = self.folders[idx]
         if idx >= 0 and not folder is None:
-            SESSIONS.append(session.Session(self.window, folder, self.targetUrl, self.websiteHost))
+            client = chromeconnector.client.ChromeClient(self.targetUrl)
+            SESSIONS.append(session.Session(self.window, folder, client, self.websiteHost))
 
     def is_enabled(self):
         return len(SESSIONS) == 0
@@ -202,9 +209,3 @@ class EventHandler(sublime_plugin.EventListener):
         #print view.substr(view.sel()[0])
         # sublime.set_timeout(debounced(view), 1)
         pass
-
-
-class TestCommand(sublime_plugin.WindowCommand):
-    def run(self):
-        self.window.show_quick_panel([['SCOUT.App.Content.Ext.extend.loadModule', 'Spafax.SCOUT.App.Content.js:110'],
-            ['SCOUT.App.Main.Ext.extend.loadModule', 'Spafax.SCOUT.App.Main.js:174']], lambda a: a)
