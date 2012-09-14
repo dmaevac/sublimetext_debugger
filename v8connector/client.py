@@ -1,38 +1,24 @@
-
-        # s = json.dumps({
-        #    'seq': 101,
-        #    'type': 'request',
-        #    'command': 'continue'
-        # })
-        # msg = 'Content-Length: {0}\r\n\r\n{1}'.format(len(s), s)
-        # self.buffer = msg
-
-        # s = json.dumps({
-        #    'seq': 102,
-        #    'type': 'request',
-        #    'command': 'listbreakpoints',
-        #    'arguments': {
-        #         'types': 4,
-        #         'includeSource': True
-        #    }
-        # })
-        # msg = 'Content-Length: {0}\r\n\r\n{1}'.format(len(s), s)
-        # self.buffer = msg
-# twisted imports
 from twisted.internet import reactor, protocol
 from twisted.python import log
-
-# system imports
 import sys
 import re
 import json
 import pprint
+import utils
+
+reload(utils)
 
 
 class V8DebuggerProtocol(protocol.Protocol):
+    '''
+    Twisted V8 Debugging protocol
+    All credit to https://github.com/dannycoates/node-inspector on which much
+    of this code is based.
+    '''
     def __init__(self):
         self.__buffer = ''
         self.__msg = None
+        self.emitter = utils.EventHook()
 
     def __parse(self):
         if not self.__msg is None and self.__msg["headersDone"]:
@@ -42,13 +28,13 @@ class V8DebuggerProtocol(protocol.Protocol):
                 if len(self.__msg["body"]) > 0:
                     obj = json.loads(self.__msg["body"])
                     pprint.pprint(obj)
-        #   if (obj.type === 'response' && obj.request_seq > 0) {
-        #     callbackHandler.processResponse(obj.request_seq, [obj]);
-        #   }
-        #   else if (obj.type === 'event') {
-        #     debugr.emit(obj.event, obj);
-        #   }
-        # }
+                    if obj['type'] == 'response' and obj['request_seq'] > 0:
+                        # callback handler
+                        pass
+                    elif obj['type'] == 'event':
+                        #event emitting
+                        self.emitter.fire(obj['event'], obj)
+                        pass
 
                 self.__msg = None
                 self.__parse()
@@ -91,28 +77,18 @@ class V8DebuggerProtocol(protocol.Protocol):
 
 
 class V8DebuggerClientFactory(protocol.ClientFactory):
+
     def startedConnecting(self, connector):
         print 'Started to connect.'
 
     def buildProtocol(self, addr):
         print 'Connected.'
-        return V8DebuggerProtocol()
+        protocol = V8DebuggerProtocol()
+        self.vent = protocol.emitter
+        return protocol
 
     def clientConnectionLost(self, connector, reason):
         print 'Lost connection.  Reason:', reason
 
     def clientConnectionFailed(self, connector, reason):
         print 'Connection failed. Reason:', reason
-
-if __name__ == '__main__':
-    # initialize logging
-    log.startLogging(sys.stdout)
-
-    # create factory protocol and application
-    f = V8DebuggerClientFactory()
-
-    # connect factory to this host and port
-    reactor.connectTCP("localhost", 9222, f)
-
-    # run bot
-    reactor.run()
